@@ -73,4 +73,6 @@ For a static browser build suitable for GitHub Pages, run:
 npm run build:preview
 ```
 
-Publish the generated `dist/` folder through your preferred static hosting workflow. In GitHub Pages, choose the branch or deployment source that serves the built `dist/` artifacts.
+The preview is configured for the GitHub Pages project path `/easy-ai-video-factory/`, so Vite emits asset URLs that work at `https://etoyig-png.github.io/easy-ai-video-factory/`. The published page uses the same safe local Remotion Player compositions and does not call paid generation providers.
+
+Deployment instructions live in [`DEPLOY_PREVIEW.md`](DEPLOY_PREVIEW.md). After merging, enable **Settings** → **Pages** → **Build and deployment** → **Source: GitHub Actions**, then run the **Deploy browser preview to GitHub Pages** workflow from the **Actions** tab if you want to deploy manually.
