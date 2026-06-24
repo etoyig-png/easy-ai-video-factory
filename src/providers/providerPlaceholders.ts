@@ -1,0 +1,9 @@
+export const PROVIDER_ENV_VARS = [
+  "OPENAI_API_KEY",
+  "KLING_ACCESS_KEY",
+  "KLING_SECRET_KEY",
+  "ELEVENLABS_API_KEY",
+  "ELEVENLABS_VOICE_ID",
+] as const;
+
+export const providersAreDisabledForDryRun = true;
