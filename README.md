@@ -56,3 +56,21 @@ npx remotion render easy-ai-horizontal out/easy-ai-horizontal.mp4 --frames=0-89
 - No real API keys are committed.
 - No paid OpenAI, Kling, ElevenLabs, voice, image, music, or video generation is invoked by the Easy AI dry run.
 - AI remains visually invisible; outcomes are shown through human business activity, faster responses, timely follow-up, and owner control.
+
+## Easy AI browser preview
+
+Run the local Remotion Player preview with:
+
+```bash
+npm run preview:browser
+```
+
+Then open the local URL printed by Vite. The page lets you switch between the vertical, square, and horizontal Phase 1 Easy AI compositions without downloading a video file.
+
+For a static browser build suitable for GitHub Pages, run:
+
+```bash
+npm run build:preview
+```
+
+Publish the generated `dist/` folder through your preferred static hosting workflow. In GitHub Pages, choose the branch or deployment source that serves the built `dist/` artifacts.
