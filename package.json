@@ -10,7 +10,7 @@
     "gen": "bun cli/cli.ts",
     "typecheck": "tsc",
     "preview:browser": "vite --host 0.0.0.0",
-    "build:preview": "vite build --base /easy-ai-video-factory/",
+    "build:preview": "vite build",
     "check:compositions": "remotion compositions src/index.ts",
     "render:still": "remotion still src/index.ts easy-ai-vertical out/easy-ai-vertical-frame-120.png --frame=120"
   },
