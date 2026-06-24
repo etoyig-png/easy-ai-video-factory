@@ -1,0 +1,10 @@
+{
+  "projectId": "easy-ai-brand-intro-dry-run",
+  "phase": "phase-1-dry-run",
+  "status": "code-generated-preview-only",
+  "durationSeconds": 30,
+  "fps": 30,
+  "formats": ["vertical 1080x1920", "square 1080x1080", "horizontal 1920x1080"],
+  "paidApiCalls": false,
+  "assets": "No generated paid assets; Remotion shapes and text only."
+}
