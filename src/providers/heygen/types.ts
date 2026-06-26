@@ -66,7 +66,7 @@ export interface HeyGenCreateVideoRequest {
   idempotencyKey?: string;
 }
 
-export type HeyGenVideoStatus = "pending" | "processing" | "completed" | "failed" | "unknown";
+export type HeyGenVideoStatus = "queued" | "pending" | "processing" | "completed" | "failed" | "unknown";
 
 export interface HeyGenVideo {
   id: string;

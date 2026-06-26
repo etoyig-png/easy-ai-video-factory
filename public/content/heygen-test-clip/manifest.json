@@ -1,0 +1,18 @@
+{
+  "title": "Easy AI HeyGen Technical Test Clip",
+  "script": "Easy AI helps your business spend less time on repetitive work and more time serving customers.",
+  "status": "not_generated",
+  "technicalTest": true,
+  "finalCommercial": false,
+  "generatedAt": null,
+  "requestedResolution": { "width": 1280, "height": 720 },
+  "expectedPaidVideoRequests": 1,
+  "videoRequestCount": 0,
+  "videoId": null,
+  "videoSrc": null,
+  "durationSeconds": null,
+  "avatar": { "id": null, "name": null },
+  "voice": { "id": null, "name": null },
+  "selectionReason": null,
+  "failureReason": null
+}
