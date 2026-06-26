@@ -17,6 +17,20 @@ import type {
 const JsonRecordSchema = z.record(z.string(), z.unknown());
 const IdSchema = z.union([z.string(), z.number()]).transform(String);
 
+export const HeyGenCreateVideoRequestSchema = z
+  .object({
+    type: z.literal("avatar"),
+    avatar_id: z.string().min(1),
+    title: z.string().min(1),
+    script: z.string().min(1),
+    voice_id: z.string().min(1).optional(),
+    resolution: z.enum(["720p", "1080p", "4k"]),
+    aspect_ratio: z.enum(["16:9", "9:16", "1:1"]),
+    output_format: z.enum(["mp4", "webm"]),
+    idempotencyKey: z.string().min(1).optional(),
+  })
+  .strict();
+
 export class HeyGenProviderError extends Error {
   constructor(message: string, public readonly status?: number) {
     super(redactHeyGenSecrets(message));
@@ -96,6 +110,44 @@ const queryString = (params: Record<string, string | number | undefined>): strin
 const duplicateRequestHash = (request: HeyGenCreateVideoRequest): string =>
   createHash("sha256").update(JSON.stringify(request)).digest("hex");
 
+const createVideoPayload = (request: HeyGenCreateVideoRequest): Omit<HeyGenCreateVideoRequest, "idempotencyKey"> => {
+  const result = HeyGenCreateVideoRequestSchema.safeParse(request);
+  if (!result.success) {
+    const fields = result.error.issues.map((issue) => issue.path.join(".") || "<root>").join(", ");
+    throw new HeyGenProviderError(`Invalid outgoing HeyGen create-video request. Invalid fields: ${fields}.`);
+  }
+  return {
+    type: result.data.type,
+    avatar_id: result.data.avatar_id,
+    title: result.data.title,
+    script: result.data.script,
+    voice_id: result.data.voice_id,
+    resolution: result.data.resolution,
+    aspect_ratio: result.data.aspect_ratio,
+    output_format: result.data.output_format,
+  };
+};
+
+const safeHeyGenErrorDetails = (status: number, body: unknown): string => {
+  const root = JsonRecordSchema.safeParse(body).success ? (body as Record<string, unknown>) : {};
+  const data = JsonRecordSchema.safeParse(root.data).success ? (root.data as Record<string, unknown>) : {};
+  const error = JsonRecordSchema.safeParse(root.error).success ? (root.error as Record<string, unknown>) : {};
+  const details = JsonRecordSchema.safeParse(error.details ?? data.details ?? root.details).success ? ((error.details ?? data.details ?? root.details) as Record<string, unknown>) : {};
+  const invalidFields = [root.field, root.param, data.field, data.param, error.field, error.param, details.field, details.param]
+    .filter((value): value is string => typeof value === "string" && /^[A-Za-z0-9_.-]+$/.test(value));
+  const code = safeString(root.code) ?? safeString(data.code) ?? safeString(error.code);
+  const message = safeString(root.message) ?? safeString(data.message) ?? safeString(error.message) ?? safeString(root.error);
+  const videoId = safeString(root.video_id) ?? safeString(data.video_id) ?? safeString(root.id) ?? safeString(data.id);
+  return redactHeyGenSecrets([
+    `HeyGen request failed with HTTP ${status}.`,
+    code ? `HeyGen error code: ${code}.` : null,
+    message ? `HeyGen error message: ${message}.` : null,
+    invalidFields.length > 0 ? `Safe invalid fields: ${[...new Set(invalidFields)].join(", ")}.` : null,
+    `Video ID returned: ${videoId ? "yes" : "no"}.`,
+    status === 400 && !videoId ? "No HeyGen video was created." : null,
+  ].filter(Boolean).join(" "));
+};
+
 export class HeyGenProvider {
   private readonly config: HeyGenConfig;
 
@@ -149,9 +201,10 @@ export class HeyGenProvider {
       throw new HeyGenProviderError("HeyGen paid video generation is disabled. Set HEYGEN_GENERATION_ENABLED=true server-side to enable it intentionally.");
     }
 
+    const payload = createVideoPayload(request);
     const hash = duplicateRequestHash(request);
     const headers = request.idempotencyKey ? { "Idempotency-Key": request.idempotencyKey } : { "Idempotency-Key": hash };
-    const data = parseRecord("create video", unwrapData("create video", await this.request("/v3/videos", { method: "POST", body: request, extraHeaders: headers, paid: true })));
+    const data = parseRecord("create video", unwrapData("create video", await this.request("/v3/videos", { method: "POST", body: payload, extraHeaders: headers, paid: true })));
     const videoId = IdSchema.parse(data.video_id ?? data.id);
     return { videoId, duplicateRequestHash: hash };
   }
@@ -192,7 +245,7 @@ export class HeyGenProvider {
 
   private async request(path: string, options: { method?: "GET" | "POST"; body?: unknown; extraHeaders?: Record<string, string>; paid?: boolean } = {}): Promise<unknown> {
     const method = options.method ?? "GET";
-    const attempts = options.paid && !options.extraHeaders?.["Idempotency-Key"] ? 1 : this.config.retryCount + 1;
+    const attempts = options.paid ? 1 : this.config.retryCount + 1;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -214,7 +267,13 @@ export class HeyGenProvider {
         }
 
         if (!response.ok) {
-          throw new HeyGenProviderError(`HeyGen request failed with HTTP ${response.status}.`, response.status);
+          let body: unknown = null;
+          try {
+            body = await response.json();
+          } catch {
+            body = null;
+          }
+          throw new HeyGenProviderError(safeHeyGenErrorDetails(response.status, body), response.status);
         }
 
         return await response.json();
