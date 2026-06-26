@@ -13,7 +13,9 @@
     "build:preview": "vite build",
     "check:compositions": "remotion compositions src/index.ts",
     "render:still": "remotion still src/index.ts easy-ai-vertical out/easy-ai-vertical-frame-120.png --frame=120",
-    "test:openai:connection": "tsx scripts/test-openai-connection.ts"
+    "test:openai:connection": "tsx scripts/test-openai-connection.ts",
+    "test:heygen:unit": "tsx --test tests/heygenProvider.test.ts",
+    "test:heygen:connection": "tsx scripts/test-heygen-connection.ts"
   },
   "repository": {},
   "license": "UNLICENSED",

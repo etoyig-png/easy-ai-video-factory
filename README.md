@@ -76,3 +76,14 @@ npm run build:preview
 The preview is configured for the GitHub Pages project path `/easy-ai-video-factory/`, so Vite emits asset URLs that work at `https://etoyig-png.github.io/easy-ai-video-factory/`. The published page uses the same safe local Remotion Player compositions and does not call paid generation providers.
 
 Deployment instructions live in [`DEPLOY_PREVIEW.md`](DEPLOY_PREVIEW.md). After merging, enable **Settings** → **Pages** → **Build and deployment** → **Source: GitHub Actions**, then run the **Deploy browser preview to GitHub Pages** workflow from the **Actions** tab if you want to deploy manually.
+
+## HeyGen provider preparation
+
+Phase 2B adds a server-side HeyGen provider for safe account validation and future avatar-video generation. The read-only connection test uses `HEYGEN_API_KEY` from the server environment, keeps `HEYGEN_GENERATION_ENABLED=false` by default, and calls only quota, avatar-look, and voice-list endpoints.
+
+```bash
+npm run test:heygen:unit
+HEYGEN_API_KEY=your_key npm run test:heygen:connection
+```
+
+Do not place the HeyGen key in browser code or commit it to the repository. Future paid video generation is guarded by `HEYGEN_GENERATION_ENABLED=true` and should be enabled only intentionally in a protected server-side environment. See [`HEYGEN_INTEGRATION.md`](HEYGEN_INTEGRATION.md) for setup, safety rules, troubleshooting, and the manual GitHub Actions connection test.
