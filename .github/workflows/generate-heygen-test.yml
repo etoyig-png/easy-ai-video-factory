@@ -65,7 +65,6 @@ jobs:
 
       - name: Generate exactly one HeyGen test clip
         id: generate
-        continue-on-error: true
         env:
           HEYGEN_GENERATION_ENABLED: "true"
         run: npm run generate:heygen:test
@@ -74,6 +73,16 @@ jobs:
         if: always()
         run: |
           echo "HeyGen generation step outcome: ${{ steps.generate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify generated clip manifest before preview build
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const manifest = JSON.parse(await readFile('public/content/heygen-test-clip/manifest.json', 'utf8'));
+          if (manifest.status !== 'completed' || !manifest.videoSrc || manifest.videoRequestCount !== 1) {
+            throw new Error('HeyGen test clip manifest is not completed; refusing to build or deploy placeholder preview.');
+          }
+          NODE
 
       - name: Build browser preview
         run: npm run build:preview

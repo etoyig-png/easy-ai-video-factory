@@ -65,6 +65,57 @@ test("normalizes voice-list response", async () => {
   assert.equal(result.voices[0]?.language, "en-US");
 });
 
+test("normalizes official v3 avatar response envelope with data array", async () => {
+  mockFetch(() => Response.json({ data: [{ id: "avatar-official", name: "Official Ava", default_voice_id: "voice-1", supported_api_engines: [] }], has_more: false, next_token: null }));
+  const result = await new HeyGenProvider(config()).listAvatarLooks();
+  assert.equal(result.looks[0]?.id, "avatar-official");
+  assert.deepEqual(result.looks[0]?.supportedApiEngines, []);
+});
+
+test("normalizes official v3 voice response envelope with data array", async () => {
+  mockFetch(() => Response.json({ data: [{ voice_id: "voice-official", name: "Official Voice", language: "en-US", gender: "female" }], has_more: false, next_token: null }));
+  const result = await new HeyGenProvider(config()).listVoices();
+  assert.equal(result.voices[0]?.id, "voice-official");
+});
+
+test("normalizes already-unwrapped avatar arrays", async () => {
+  mockFetch(() => Response.json([{ id: "avatar-array", name: "Array Ava", supported_api_engines: ["v3"] }]));
+  const result = await new HeyGenProvider(config()).listAvatarLooks();
+  assert.equal(result.looks[0]?.id, "avatar-array");
+});
+
+test("normalizes already-unwrapped voice arrays", async () => {
+  mockFetch(() => Response.json([{ voice_id: "voice-array", name: "Array Voice", language: "en-US", gender: "male" }]));
+  const result = await new HeyGenProvider(config()).listVoices();
+  assert.equal(result.voices[0]?.id, "voice-array");
+});
+
+test("malformed list response reports safe diagnostics only", async () => {
+  process.env.HEYGEN_API_KEY = "test-secret-key";
+  mockFetch(() => Response.json({ data: { private_url: "https://secret.example.test/file", api_key: "test-secret-key" } }));
+  await assert.rejects(() => new HeyGenProvider(config()).listVoices(), (error) => {
+    assert(error instanceof HeyGenProviderError);
+    assert.match(error.message, /Invalid HeyGen voices response/);
+    assert.match(error.message, /Top-level type: object/);
+    assert.match(error.message, /safe top-level keys: data/);
+    assert.doesNotMatch(error.message, /secret\.example/);
+    assert.doesNotMatch(error.message, /test-secret-key/);
+    return true;
+  });
+});
+
+test("empty official avatar array is accepted", async () => {
+  mockFetch(() => Response.json({ data: [], has_more: false, next_token: null }));
+  const result = await new HeyGenProvider(config()).listAvatarLooks();
+  assert.deepEqual(result.looks, []);
+});
+
+test("empty official voice array is accepted", async () => {
+  mockFetch(() => Response.json({ data: [], has_more: false, next_token: null }));
+  const result = await new HeyGenProvider(config()).listVoices();
+  assert.deepEqual(result.voices, []);
+});
+
 test("rate limiting reports 429 safely", async () => {
   mockFetch(() => new Response("{}", { status: 429 }));
   await assert.rejects(() => new HeyGenProvider(config()).listVoices(), /HTTP 429/);
