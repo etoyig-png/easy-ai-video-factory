@@ -35,9 +35,53 @@ const safeString = (value: unknown): string | null => (typeof value === "string"
 const safeNumber = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 const safeBoolean = (value: unknown): boolean | null => (typeof value === "boolean" ? value : null);
 
-const unwrapData = (json: unknown): unknown => {
-  const record = JsonRecordSchema.parse(json);
-  return record.data ?? record;
+const describeTopLevel = (value: unknown): { kind: "array" | "object" | "other"; keys: string[]; itemCount: number | null } => {
+  if (Array.isArray(value)) return { kind: "array", keys: [], itemCount: value.length };
+  if (value && typeof value === "object") return { kind: "object", keys: Object.keys(value as Record<string, unknown>).sort(), itemCount: null };
+  return { kind: "other", keys: [], itemCount: null };
+};
+
+const formatSafeValidationFailure = (endpointName: string, value: unknown, error: unknown): string => {
+  const details = describeTopLevel(value);
+  const zodSummary = error instanceof z.ZodError ? error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`).join("; ") : "schema validation failed";
+  return `Invalid HeyGen ${endpointName} response (${zodSummary}). Top-level type: ${details.kind}; safe top-level keys: ${details.keys.join(", ") || "none"}; item count: ${details.itemCount ?? "n/a"}.`;
+};
+
+const parseRecord = (endpointName: string, value: unknown): Record<string, unknown> => {
+  const result = JsonRecordSchema.safeParse(value);
+  if (!result.success) throw new HeyGenProviderError(formatSafeValidationFailure(endpointName, value, result.error));
+  return result.data;
+};
+
+const parseRecordArray = (endpointName: string, value: unknown): Record<string, unknown>[] => {
+  const result = z.array(JsonRecordSchema).safeParse(value);
+  if (!result.success) throw new HeyGenProviderError(formatSafeValidationFailure(endpointName, value, result.error));
+  return result.data;
+};
+
+const unwrapData = (endpointName: string, json: unknown): unknown => parseRecord(endpointName, json).data ?? json;
+
+const normalizeListEnvelope = (endpointName: string, json: unknown, legacyKeys: string[]): { items: Record<string, unknown>[]; nextPaginationToken?: string } => {
+  if (Array.isArray(json)) return { items: parseRecordArray(endpointName, json) };
+
+  const record = parseRecord(endpointName, json);
+  const directData = record.data;
+  if (Array.isArray(directData)) {
+    return { items: parseRecordArray(endpointName, directData), nextPaginationToken: safeString(record.next_token) ?? safeString(record.next_pagination_token) ?? safeString(record.nextPaginationToken) ?? undefined };
+  }
+
+  if (directData && typeof directData === "object" && !Array.isArray(directData)) {
+    const nested = parseRecord(endpointName, directData);
+    for (const key of legacyKeys) {
+      if (Array.isArray(nested[key])) return { items: parseRecordArray(endpointName, nested[key]), nextPaginationToken: safeString(nested.next_pagination_token) ?? safeString(nested.nextPaginationToken) ?? safeString(record.next_token) ?? undefined };
+    }
+  }
+
+  for (const key of legacyKeys) {
+    if (Array.isArray(record[key])) return { items: parseRecordArray(endpointName, record[key]), nextPaginationToken: safeString(record.next_pagination_token) ?? safeString(record.nextPaginationToken) ?? safeString(record.next_token) ?? undefined };
+  }
+
+  throw new HeyGenProviderError(formatSafeValidationFailure(endpointName, json, new Error(`missing expected list array (${["data", ...legacyKeys].join("/")})`)));
 };
 
 const queryString = (params: Record<string, string | number | undefined>): string => {
@@ -60,7 +104,7 @@ export class HeyGenProvider {
   }
 
   async getRemainingQuota(): Promise<HeyGenQuota> {
-    const data = JsonRecordSchema.parse(unwrapData(await this.request("/v2/user/remaining_quota")));
+    const data = parseRecord("remaining quota", unwrapData("remaining quota", await this.request("/v2/user/remaining_quota")));
     return {
       remainingQuota: safeNumber(data.remaining_quota) ?? safeNumber(data.remainingQuota) ?? safeNumber(data.quota),
       rawUnit: safeString(data.unit) ?? safeString(data.quota_unit),
@@ -68,34 +112,36 @@ export class HeyGenProvider {
   }
 
   async listAvatarLooks(options: HeyGenListAvatarLooksOptions = {}): Promise<HeyGenAvatarLookList> {
-    const json = unwrapData(
-      await this.request(
-        `/v3/avatars/looks${queryString({
-          ownership: options.ownership,
-          avatar_type: options.avatarType,
-          limit: options.limit,
-          pagination_token: options.paginationToken,
-        })}`,
-      ),
+    const json = await this.request(
+      `/v3/avatars/looks${queryString({
+        ownership: options.ownership,
+        avatar_type: options.avatarType,
+        limit: options.limit,
+        pagination_token: options.paginationToken,
+      })}`,
     );
-    const record = JsonRecordSchema.parse(json);
-    const rawLooks = z.array(JsonRecordSchema).parse(record.avatar_looks ?? record.looks ?? []);
-    return {
-      looks: rawLooks.map(this.normalizeAvatarLook),
-      nextPaginationToken: safeString(record.next_pagination_token) ?? safeString(record.nextPaginationToken),
-    };
+    const list = normalizeListEnvelope("avatar looks", json, ["avatar_looks", "looks"]);
+    try {
+      return {
+        looks: list.items.map(this.normalizeAvatarLook),
+        nextPaginationToken: list.nextPaginationToken ?? null,
+      };
+    } catch (error) {
+      throw new HeyGenProviderError(formatSafeValidationFailure("avatar looks", json, error));
+    }
   }
 
   async listVoices(options: HeyGenListVoicesOptions = {}): Promise<HeyGenVoiceList> {
-    const json = unwrapData(
-      await this.request(`/v3/voices${queryString({ limit: options.limit, pagination_token: options.paginationToken })}`),
-    );
-    const record = JsonRecordSchema.parse(json);
-    const rawVoices = z.array(JsonRecordSchema).parse(record.voices ?? []);
-    return {
-      voices: rawVoices.map(this.normalizeVoice),
-      nextPaginationToken: safeString(record.next_pagination_token) ?? safeString(record.nextPaginationToken),
-    };
+    const json = await this.request(`/v3/voices${queryString({ limit: options.limit, pagination_token: options.paginationToken })}`);
+    const list = normalizeListEnvelope("voices", json, ["voices"]);
+    try {
+      return {
+        voices: list.items.map(this.normalizeVoice),
+        nextPaginationToken: list.nextPaginationToken ?? null,
+      };
+    } catch (error) {
+      throw new HeyGenProviderError(formatSafeValidationFailure("voices", json, error));
+    }
   }
 
   async createVideo(request: HeyGenCreateVideoRequest): Promise<{ videoId: string; duplicateRequestHash: string }> {
@@ -105,13 +151,13 @@ export class HeyGenProvider {
 
     const hash = duplicateRequestHash(request);
     const headers = request.idempotencyKey ? { "Idempotency-Key": request.idempotencyKey } : { "Idempotency-Key": hash };
-    const data = JsonRecordSchema.parse(unwrapData(await this.request("/v3/videos", { method: "POST", body: request, extraHeaders: headers, paid: true })));
+    const data = parseRecord("create video", unwrapData("create video", await this.request("/v3/videos", { method: "POST", body: request, extraHeaders: headers, paid: true })));
     const videoId = IdSchema.parse(data.video_id ?? data.id);
     return { videoId, duplicateRequestHash: hash };
   }
 
   async getVideo(videoId: string): Promise<HeyGenVideo> {
-    const data = JsonRecordSchema.parse(unwrapData(await this.request(`/v3/videos/${encodeURIComponent(videoId)}`)));
+    const data = parseRecord("video status", unwrapData("video status", await this.request(`/v3/videos/${encodeURIComponent(videoId)}`)));
     return {
       id: IdSchema.parse(data.video_id ?? data.id ?? videoId),
       status: this.normalizeVideoStatus(data.status),

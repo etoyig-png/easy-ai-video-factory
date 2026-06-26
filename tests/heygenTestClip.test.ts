@@ -85,6 +85,29 @@ test("failed generation does not create another paid video", async () => {
   assert.equal(paidPosts, 1);
 });
 
+test("parsing failure stops before POST /v3/videos", async () => {
+  let paidPosts = 0;
+  mockFetch((url, init) => {
+    if (url.endsWith("/v3/videos") && init.method === "POST") paidPosts += 1;
+    if (url.endsWith("/v2/user/remaining_quota")) return Response.json({ data: {} });
+    if (url.includes("avatars")) return Response.json({ data: { not_avatar_looks: [] } });
+    if (url.includes("voices")) return Response.json({ data: [voice()] });
+    return Response.json({});
+  });
+  await assert.rejects(() => generateHeyGenTestClip(new HeyGenProvider(config()), join(tmpdir(), "unused")), /Invalid HeyGen avatar looks response/);
+  assert.equal(paidPosts, 0);
+});
+
+test("Generate HeyGen workflow fails generation and skips placeholder deploy", async () => {
+  const workflow = await readFile(".github/workflows/generate-heygen-test.yml", "utf8");
+  assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
+  assert.match(workflow, /Record generation outcome[\s\S]*if: always\(\)/);
+  assert.match(workflow, /Verify generated clip manifest before preview build/);
+  assert.match(workflow, /manifest\.status !== 'completed'/);
+  assert.match(workflow, /refusing to build or deploy placeholder preview/);
+  assert.match(workflow, /needs: build-and-generate/);
+});
+
 test("timeout is surfaced", async () => {
   mockFetch((url, init) => {
     if (url.endsWith("/v3/videos") && init.method === "POST") return Response.json({ data: { video_id: "video-1" } });
