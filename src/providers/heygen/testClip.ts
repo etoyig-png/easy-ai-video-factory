@@ -6,10 +6,9 @@ import type { HeyGenAvatarLook, HeyGenCreateVideoRequest, HeyGenVideo, HeyGenVoi
 
 export const HEYGEN_TEST_TITLE = "Easy AI HeyGen Technical Test Clip";
 export const HEYGEN_TEST_SCRIPT = "Easy AI helps your business spend less time on repetitive work and more time serving customers.";
-export const HEYGEN_TEST_RESOLUTION = { width: 1280, height: 720 } as const;
+export const HEYGEN_TEST_RESOLUTION = "720p" as const;
 export const HEYGEN_TEST_ASPECT_RATIO = "16:9" as const;
 export const HEYGEN_TEST_OUTPUT_FORMAT = "mp4" as const;
-export const HEYGEN_TEST_ENGINE = "v3";
 
 export interface SelectedHeyGenTalent {
   avatar: HeyGenAvatarLook;
@@ -80,15 +79,14 @@ export const selectHeyGenTalent = (avatars: HeyGenAvatarLook[], voices: HeyGenVo
 };
 
 export const buildHeyGenTestRequest = (selection: SelectedHeyGenTalent): HeyGenCreateVideoRequest => ({
-  avatarId: selection.avatar.id,
-  voiceId: selection.voice?.id,
+  type: "avatar",
+  avatar_id: selection.avatar.id,
   title: HEYGEN_TEST_TITLE,
   script: HEYGEN_TEST_SCRIPT,
+  voice_id: selection.voice?.id,
   resolution: HEYGEN_TEST_RESOLUTION,
-  aspectRatio: HEYGEN_TEST_ASPECT_RATIO,
-  outputFormat: HEYGEN_TEST_OUTPUT_FORMAT,
-  captions: false,
-  engine: HEYGEN_TEST_ENGINE,
+  aspect_ratio: HEYGEN_TEST_ASPECT_RATIO,
+  output_format: HEYGEN_TEST_OUTPUT_FORMAT,
   idempotencyKey: createHeyGenTestIdempotencyKey(),
 });
 

@@ -29,7 +29,7 @@ const main = async () => {
   console.log(`Script: ${HEYGEN_TEST_SCRIPT}`);
   console.log(`Selected avatar name: ${selection.avatar.name ?? "Unnamed compatible avatar"}`);
   console.log(`Selected voice name: ${selection.voice?.name ?? "Default/fallback voice"}`);
-  console.log(`Requested resolution: ${HEYGEN_TEST_RESOLUTION.width}x${HEYGEN_TEST_RESOLUTION.height}`);
+  console.log(`Requested resolution: ${HEYGEN_TEST_RESOLUTION}`);
   console.log("Expected number of paid video requests: one");
   console.log(`Remaining quota before generation: ${quota.remainingQuota ?? "unknown"} ${quota.rawUnit ?? ""}`.trim());
 

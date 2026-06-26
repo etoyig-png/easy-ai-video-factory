@@ -134,7 +134,7 @@ test("malformed response fails schema validation", async () => {
 test("generation is blocked when HEYGEN_GENERATION_ENABLED is false", async () => {
   let called = false;
   mockFetch(() => { called = true; return Response.json({}); });
-  await assert.rejects(() => new HeyGenProvider(config({ generationEnabled: false })).createVideo({ avatarId: "a", script: "hello" }), /disabled/);
+  await assert.rejects(() => new HeyGenProvider(config({ generationEnabled: false })).createVideo({ type: "avatar", avatar_id: "a", title: "t", script: "hello", resolution: "720p", aspect_ratio: "16:9", output_format: "mp4" }), /disabled/);
   assert.equal(called, false);
 });
 

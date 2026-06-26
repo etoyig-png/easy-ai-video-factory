@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { assertPaidGenerationConfirmation, buildHeyGenTestRequest, createHeyGenTestIdempotencyKey, createPreviewManifest, generateHeyGenTestClip, selectHeyGenTalent, validateDownloadedMp4 } from "../src/providers/heygen";
 import type { HeyGenAvatarLook, HeyGenConfig, HeyGenVoice } from "../src/providers/heygen";
-import { HeyGenProvider, redactHeyGenSecrets } from "../src/providers/heygen";
+import { HeyGenCreateVideoRequestSchema, HeyGenProvider, redactHeyGenSecrets } from "../src/providers/heygen/provider";
 
 const avatar = (overrides: Partial<HeyGenAvatarLook> = {}): HeyGenAvatarLook => ({ id: "avatar-1", name: "Professional Ava", groupId: null, previewImageUrl: null, previewVideoUrl: null, gender: "female", defaultVoiceId: "voice-1", supportedApiEngines: ["v3"], dimensions: { width: 1280, height: 720 }, status: "active", ...overrides });
 const voice = (overrides: Partial<HeyGenVoice> = {}): HeyGenVoice => ({ id: "voice-1", name: "Warm American Female", language: "en-US", gender: "female", previewAudioUrl: null, supportInteractiveAvatar: true, ...overrides });
@@ -38,6 +38,40 @@ test("voice-selection fallback chooses English voice when default voice is unava
   assert.equal(selected.voice?.id, "english");
 });
 
+test("voice-selection prefers avatar default voice by actual ID", () => {
+  const selected = selectHeyGenTalent([avatar({ defaultVoiceId: "default-voice", name: "Maya" })], [voice({ id: "display-match", name: "Hope" }), voice({ id: "default-voice", name: "Different Display" })]);
+  assert.equal(selected.avatar.id, "avatar-1");
+  assert.equal(selected.voice?.id, "default-voice");
+});
+
+test("builds the minimal valid v3 create-video payload with avatar look ID and voice ID", () => {
+  const request = buildHeyGenTestRequest(selectHeyGenTalent([avatar({ id: "look-id", name: "Maya" })], [voice({ id: "voice-id", name: "Hope" })]));
+  assert.deepEqual(request, {
+    type: "avatar",
+    avatar_id: "look-id",
+    title: "Easy AI HeyGen Technical Test Clip",
+    script: "Easy AI helps your business spend less time on repetitive work and more time serving customers.",
+    voice_id: "voice-id",
+    resolution: "720p",
+    aspect_ratio: "16:9",
+    output_format: "mp4",
+    idempotencyKey: createHeyGenTestIdempotencyKey(),
+  });
+  assert.equal(HeyGenCreateVideoRequestSchema.safeParse(request).success, true);
+});
+
+test("create-video schema rejects old resolution, width and height, and missing required fields", () => {
+  const invalid = { avatar_id: "look-id", script: "hello", resolution: "1280x720", aspect_ratio: "4:3", output_format: "mp4", width: 1280, height: 720 };
+  const result = HeyGenCreateVideoRequestSchema.safeParse(invalid);
+  assert.equal(result.success, false);
+  if (!result.success) {
+    assert.match(result.error.message, /type/);
+    assert.match(result.error.message, /resolution/);
+    assert.match(result.error.message, /aspect_ratio/);
+    assert.match(result.error.message, /width/);
+  }
+});
+
 test("generation disabled by default prevents paid POST", async () => {
   let calls = 0;
   mockFetch(() => { calls += 1; return Response.json({}); });
@@ -60,7 +94,7 @@ test("successful queued-to-completed polling downloads and manifests the clip", 
     if (url.endsWith("/v2/user/remaining_quota")) return Response.json({ data: { remaining_quota: 3, unit: "credits" } });
     if (url.includes("/v3/avatars/looks")) return Response.json({ data: { avatar_looks: [avatar()] } });
     if (url.includes("/v3/voices")) return Response.json({ data: { voices: [voice()] } });
-    if (url.endsWith("/v3/videos") && init.method === "POST") { paidPosts += 1; assert.equal((init.headers as Record<string, string>)["Idempotency-Key"], createHeyGenTestIdempotencyKey()); return Response.json({ data: { video_id: "video-1" } }); }
+    if (url.endsWith("/v3/videos") && init.method === "POST") { paidPosts += 1; assert.equal((init.headers as Record<string, string>)["Idempotency-Key"], createHeyGenTestIdempotencyKey()); assert.deepEqual(JSON.parse(String(init.body)), { type: "avatar", avatar_id: "avatar-1", title: "Easy AI HeyGen Technical Test Clip", script: "Easy AI helps your business spend less time on repetitive work and more time serving customers.", voice_id: "voice-1", resolution: "720p", aspect_ratio: "16:9", output_format: "mp4" }); return Response.json({ data: { video_id: "video-1" } }); }
     if (url.endsWith("/v3/videos/video-1")) { pollCount += 1; return Response.json({ data: pollCount < 2 ? { video_id: "video-1", status: "queued" } : { video_id: "video-1", status: "completed", video_url: "https://cdn.example.test/video.mp4" } }); }
     if (url === "https://cdn.example.test/video.mp4") return new Response(new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]));
     throw new Error(`unexpected ${url}`);
@@ -85,6 +119,32 @@ test("failed generation does not create another paid video", async () => {
   assert.equal(paidPosts, 1);
 });
 
+test("HTTP 400 reports safe diagnostics, no video created, and does not retry", async () => {
+  let paidPosts = 0;
+  process.env.HEYGEN_API_KEY = "secret-test-key";
+  mockFetch((url, init) => {
+    if (url.endsWith("/v3/videos") && init.method === "POST") {
+      paidPosts += 1;
+      return Response.json({ code: "invalid_parameter", message: "bad resolution secret-test-key", field: "resolution" }, { status: 400 });
+    }
+    if (url.endsWith("/v2/user/remaining_quota")) return Response.json({ data: {} });
+    if (url.includes("avatars")) return Response.json({ data: { avatar_looks: [avatar()] } });
+    if (url.includes("voices")) return Response.json({ data: { voices: [voice()] } });
+    throw new Error("unexpected");
+  });
+  await assert.rejects(() => generateHeyGenTestClip(new HeyGenProvider(config({ retryCount: 3 })), join(tmpdir(), "unused")), (error) => {
+    assert(error instanceof Error);
+    assert.match(error.message, /HTTP 400/);
+    assert.match(error.message, /invalid_parameter/);
+    assert.match(error.message, /Safe invalid fields: resolution/);
+    assert.match(error.message, /Video ID returned: no/);
+    assert.match(error.message, /No HeyGen video was created/);
+    assert.doesNotMatch(error.message, /secret-test-key/);
+    return true;
+  });
+  assert.equal(paidPosts, 1);
+});
+
 test("parsing failure stops before POST /v3/videos", async () => {
   let paidPosts = 0;
   mockFetch((url, init) => {
@@ -104,6 +164,8 @@ test("Generate HeyGen workflow fails generation and skips placeholder deploy", a
   assert.match(workflow, /Record generation outcome[\s\S]*if: always\(\)/);
   assert.match(workflow, /Verify generated clip manifest before preview build/);
   assert.match(workflow, /manifest\.status !== 'completed'/);
+  assert.match(workflow, /manifest\.videoRequestCount !== 1/);
+  assert.match(workflow, /video\.size <= 0/);
   assert.match(workflow, /refusing to build or deploy placeholder preview/);
   assert.match(workflow, /needs: build-and-generate/);
 });

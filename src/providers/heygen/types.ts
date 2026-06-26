@@ -50,19 +50,14 @@ export interface HeyGenVoiceList {
 }
 
 export interface HeyGenCreateVideoRequest {
-  avatarId: string;
-  title?: string;
+  type: "avatar";
+  avatar_id: string;
+  title: string;
   script: string;
-  voiceId?: string;
-  resolution?: { width: number; height: number };
-  aspectRatio?: "16:9" | "9:16" | "1:1";
-  background?: unknown;
-  captions?: boolean;
-  outputFormat?: "mp4" | "webm";
-  voiceSettings?: unknown;
-  motionPrompt?: string;
-  engine?: string;
-  callbackUrl?: string;
+  voice_id?: string;
+  resolution: "720p" | "1080p" | "4k";
+  aspect_ratio: "16:9" | "9:16" | "1:1";
+  output_format: "mp4" | "webm";
   idempotencyKey?: string;
 }
 
