@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Player } from "@remotion/player";
 import { EasyAiBrandIntro } from "./compositions/EasyAiBrandIntro";
@@ -10,13 +10,33 @@ const PREVIEW_MAX_WIDTH = 960;
 
 const formatNames = Object.keys(EASY_AI_FORMATS) as EasyAiFormatName[];
 
+interface HeyGenPreviewManifest {
+  title: string;
+  script: string;
+  status: string;
+  generatedAt: string | null;
+  videoSrc: string | null;
+  durationSeconds: number | null;
+  avatar: { name: string | null };
+  voice: { name: string | null };
+}
+
+
 const getPreviewScale = (width: number, height: number) =>
   Math.min(PREVIEW_MAX_WIDTH / width, PREVIEW_MAX_HEIGHT / height, 1);
 
 const PreviewApp: React.FC = () => {
   const [selectedFormat, setSelectedFormat] = useState<EasyAiFormatName>("vertical");
+  const [heyGenManifest, setHeyGenManifest] = useState<HeyGenPreviewManifest | null>(null);
   const format = EASY_AI_FORMATS[selectedFormat];
   const scale = useMemo(() => getPreviewScale(format.width, format.height), [format.height, format.width]);
+
+  useEffect(() => {
+    fetch("/easy-ai-video-factory/content/heygen-test-clip/manifest.json", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((manifest: HeyGenPreviewManifest | null) => setHeyGenManifest(manifest))
+      .catch(() => setHeyGenManifest(null));
+  }, []);
 
   return (
     <main style={styles.page}>
@@ -73,6 +93,28 @@ const PreviewApp: React.FC = () => {
             overflow: "hidden",
           }}
         />
+      </section>
+
+
+      <section style={styles.heyGenSection}>
+        <p style={styles.eyebrow}>HeyGen Test Clip</p>
+        <h2 style={styles.sectionTitle}>Technical test — not the final commercial</h2>
+        {heyGenManifest?.videoSrc && heyGenManifest.status === "completed" ? (
+          <>
+            {/* eslint-disable-next-line @remotion/warn-native-media-tag -- Browser review needs a normal HTML video player for the deployed MP4. */}
+            <video src={heyGenManifest.videoSrc} controls style={styles.heyGenVideo} />
+          </>
+        ) : (
+          <div style={styles.emptyVideo}>No generated HeyGen test clip has been deployed yet.</div>
+        )}
+        <dl style={styles.metaGrid}>
+          <div><dt>Script</dt><dd>{heyGenManifest?.script ?? "Easy AI helps your business spend less time on repetitive work and more time serving customers."}</dd></div>
+          <div><dt>Avatar</dt><dd>{heyGenManifest?.avatar.name ?? "Not generated yet"}</dd></div>
+          <div><dt>Voice</dt><dd>{heyGenManifest?.voice.name ?? "Not generated yet"}</dd></div>
+          <div><dt>Generation date</dt><dd>{heyGenManifest?.generatedAt ? new Date(heyGenManifest.generatedAt).toLocaleString() : "Not generated yet"}</dd></div>
+          <div><dt>Duration</dt><dd>{heyGenManifest?.durationSeconds ? `${heyGenManifest.durationSeconds}s` : "Unavailable until generated"}</dd></div>
+          <div><dt>Status</dt><dd>{heyGenManifest?.status ?? "not_generated"}</dd></div>
+        </dl>
       </section>
 
       <p style={styles.note}>
@@ -167,6 +209,42 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 28,
     background: "rgba(255, 255, 255, 0.66)",
     border: "1px solid rgba(255, 255, 255, 0.8)",
+  },
+  heyGenSection: {
+    maxWidth: 1100,
+    margin: "28px auto 0",
+    padding: 24,
+    borderRadius: 28,
+    background: EASY_AI_BRAND.colors.white,
+    boxShadow: "0 18px 60px rgba(16, 32, 51, 0.12)",
+  },
+  sectionTitle: {
+    margin: "0 0 16px",
+    fontSize: 28,
+  },
+  heyGenVideo: {
+    width: "100%",
+    maxWidth: 860,
+    aspectRatio: "16 / 9",
+    borderRadius: 18,
+    background: "#111827",
+  },
+  emptyVideo: {
+    display: "grid",
+    placeItems: "center",
+    width: "100%",
+    maxWidth: 860,
+    aspectRatio: "16 / 9",
+    borderRadius: 18,
+    background: "rgba(23, 107, 206, 0.08)",
+    color: EASY_AI_BRAND.colors.slate,
+    fontWeight: 800,
+  },
+  metaGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
+    margin: "18px 0 0",
   },
   note: {
     maxWidth: 1100,

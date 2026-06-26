@@ -87,3 +87,7 @@ HEYGEN_API_KEY=your_key npm run test:heygen:connection
 ```
 
 Do not place the HeyGen key in browser code or commit it to the repository. Future paid video generation is guarded by `HEYGEN_GENERATION_ENABLED=true` and should be enabled only intentionally in a protected server-side environment. See [`HEYGEN_INTEGRATION.md`](HEYGEN_INTEGRATION.md) for setup, safety rules, troubleshooting, and the manual GitHub Actions connection test.
+
+## HeyGen technical test clip
+
+A manual workflow can generate one short, paid HeyGen technical test clip after an explicit `GENERATE` confirmation. See [HEYGEN_TEST_VIDEO.md](HEYGEN_TEST_VIDEO.md) for the safety gate, automatic avatar/voice selection, and review steps.

@@ -211,7 +211,7 @@ export class HeyGenProvider {
   }
 
   private normalizeVideoStatus(status: unknown) {
-    if (status === "completed" || status === "failed" || status === "pending" || status === "processing") return status;
+    if (status === "completed" || status === "failed" || status === "queued" || status === "pending" || status === "processing") return status;
     return "unknown";
   }
 }

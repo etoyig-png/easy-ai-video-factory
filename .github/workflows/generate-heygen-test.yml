@@ -1,0 +1,97 @@
+name: Generate HeyGen Test Clip
+
+on:
+  workflow_dispatch:
+    inputs:
+      paid_generation_confirmation:
+        description: "Type GENERATE to approve exactly one paid HeyGen test clip request. Any other value stops safely."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-generate:
+    runs-on: ubuntu-latest
+    env:
+      HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+      HEYGEN_GENERATION_ENABLED: "false"
+      PAID_GENERATION_CONFIRMATION: ${{ inputs.paid_generation_confirmation }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run relevant tests
+        run: npm test
+
+      - name: Paid generation confirmation gate
+        run: |
+          if [ "$PAID_GENERATION_CONFIRMATION" != "GENERATE" ]; then
+            echo "No paid generation occurred. Re-run this manual workflow and type GENERATE exactly to approve one HeyGen test clip." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Confirmation accepted. The next step may submit exactly one paid HeyGen video request." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Confirm HEYGEN_API_KEY exists
+        run: |
+          if [ -z "$HEYGEN_API_KEY" ]; then
+            echo "HEYGEN_API_KEY repository secret is missing. No paid generation occurred." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Generate exactly one HeyGen test clip
+        id: generate
+        continue-on-error: true
+        env:
+          HEYGEN_GENERATION_ENABLED: "true"
+        run: npm run generate:heygen:test
+
+      - name: Record generation outcome
+        if: always()
+        run: echo "HeyGen generation step outcome: ${{ steps.generate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build browser preview
+        run: npm run build:preview
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-and-generate
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
