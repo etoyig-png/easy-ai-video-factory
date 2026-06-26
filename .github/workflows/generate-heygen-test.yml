@@ -72,7 +72,8 @@ jobs:
 
       - name: Record generation outcome
         if: always()
-        run: echo "HeyGen generation step outcome: ${{ steps.generate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "HeyGen generation step outcome: ${{ steps.generate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build browser preview
         run: npm run build:preview
