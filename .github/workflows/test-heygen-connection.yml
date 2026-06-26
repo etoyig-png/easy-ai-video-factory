@@ -1,0 +1,50 @@
+name: Test HeyGen Connection
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-heygen-connection:
+    runs-on: ubuntu-latest
+    env:
+      HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+      HEYGEN_GENERATION_ENABLED: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fail clearly when HEYGEN_API_KEY is missing
+        run: |
+          if [ -z "$HEYGEN_API_KEY" ]; then
+            echo "HEYGEN_API_KEY repository secret is missing. Add it in GitHub repository Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run HeyGen provider unit tests
+        run: npm run test:heygen:unit
+
+      - name: Run safe read-only HeyGen connection test
+        run: npm run test:heygen:connection | tee heygen-connection-summary.json
+
+      - name: Upload safe redacted result summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heygen-connection-summary
+          path: heygen-connection-summary.json
+          if-no-files-found: ignore
